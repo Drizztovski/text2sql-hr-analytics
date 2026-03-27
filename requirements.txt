@@ -1,0 +1,36 @@
+# Text-to-SQL HR Analytics Project - Dependencies
+# Python 3.13+ recommended
+
+# Data Analysis
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Database
+# sqlite3   # Built into Python standard library (no pip install needed)
+
+# AI Integration - Dual provider support (Claude + Gemini)
+anthropic>=0.18.0
+google-genai>=0.8.0
+
+# Environment Management
+python-dotenv>=1.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Web App
+streamlit>=1.30.0
+streamlit-mermaid>=0.2.0
+
+# Standard Library (no pip install needed)
+# sqlite3   # Database connections
+# datetime  # Timestamps for CSV export filenames
+# os        # File path handling
+# sys       # Path insertion for local imports
+# re        # Regex for SQL parsing and validation
+
+# Development Tools
+jupyter>=1.0.0
+ipykernel>=6.0.0
+nbconvert>=7.0.0
