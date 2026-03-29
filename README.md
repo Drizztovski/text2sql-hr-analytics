@@ -171,6 +171,43 @@ Then follow up with: *"Now show me just the top 3"* or *"Which of those is in En
  
 ---
  
+## Screenshots
+ 
+### Home Screen
+Clean chat interface with suggested starter questions and full schema explorer in the sidebar.
+ 
+![Home Screen](screenshots/Home_screen.png)
+ 
+---
+ 
+### Query Result — Average Salary by Department
+Ask a question in plain English and get back the SQL, a data table, an auto-generated chart, and a business insight — all in one response.
+ 
+![Complete Query Result](screenshots/Comlete_Result.png)
+ 
+---
+ 
+### Sidebar — Schema Explorer, ER Diagram & SQL History
+The sidebar shows all 8 tables with row counts, an interactive entity-relationship diagram, and a timestamped SQL history with one-click re-run.
+ 
+![Sidebar](screenshots/Sidebar.png)
+ 
+---
+ 
+### Distribution Analysis — Multi-Chart Visualization
+For distribution queries, the auto-visualizer generates three complementary charts: histogram, box plot, and violin plot side by side.
+ 
+![Complex Query with Multi-Chart](screenshots/Complex_query.png)
+ 
+---
+ 
+### Custom SQL Tab
+Power users can write and execute their own SQL directly against the HR database, with full safety validation and CSV export.
+ 
+![Custom SQL Editor](screenshots/Customer_SQL.png)
+
+---
+ 
 ## Key Technical Decisions
  
 **Dual API support** — Claude produces higher quality SQL and business insights but costs money. Gemini's free tier makes the app accessible for demos and development without API spend.
