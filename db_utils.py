@@ -1,12 +1,22 @@
 """
-db_utils.py — Database Utility Functions for the Text-to-SQL Project
-=====================================================================
-Helper module for loading CSV data into SQLite and inspecting schemas.
+db_utils.py — Database Utility Functions for the Text-to-SQL Engine
+====================================================================
+Provides database loading, schema inspection, query execution, and
+AI-powered business insight generation for the TechCorp HR Analytics app.
 
-This module is PROVIDED — you do not need to modify it.
+Functions:
+    load_csv_to_db()          — Load CSV files into SQLite database
+    get_schema_info()         — Full schema description for AI prompts
+    get_table_info()          — Detailed info for a single table
+    get_table_schema()        — Column list for sidebar schema display
+    execute_query()           — Safe SQL execution wrapper
+    list_tables()             — All tables with row counts
+    get_foreign_keys()        — Foreign key relationship discovery
+    generate_business_insight() — AI-powered result interpretation
+    safe_visualize()          — Execute viz code with fallback handling
 
 Usage:
-    from db_utils import load_csv_to_db, get_schema_info, execute_query
+    from db_utils import load_csv_to_db, get_schema_info, generate_business_insight
 """
 
 import sqlite3
@@ -18,8 +28,18 @@ def load_csv_to_db(csv_dir, db_path=':memory:'):
     """
     Load all CSV files from a directory into a SQLite database.
 
-    Each CSV file becomes a table (filename without .csv = table name).
-    Returns the database connection.
+    Each CSV file becomes a table named after the file (without the .csv
+    extension). Loads files in alphabetical order and enables foreign key
+    enforcement via PRAGMA.
+
+    Args:
+        csv_dir (str): Path to the directory containing CSV files.
+        db_path (str): SQLite database path. Defaults to ':memory:' for
+            an in-memory database that resets on each run.
+
+    Returns:
+        sqlite3.Connection: Active connection to the loaded database,
+            configured with check_same_thread=False for Streamlit use.
     """
     conn = sqlite3.connect(db_path, check_same_thread=False)
     csv_files = sorted([f for f in os.listdir(csv_dir) if f.endswith('.csv')])
@@ -236,7 +256,17 @@ def get_schema_info(conn):
 
 
 def get_table_info(table_name, conn):
-    """Get detailed information about a specific table."""
+    """
+    Get detailed column information for a specific table.
+
+    Args:
+        table_name (str): Name of the table to inspect.
+        conn (sqlite3.Connection): Active database connection.
+
+    Returns:
+        pd.DataFrame: DataFrame with columns: Column, Type, Not Null,
+            Primary Key — formatted for display.
+    """
     cols = pd.read_sql_query(f"PRAGMA table_info({table_name})", conn)
     row_count = pd.read_sql_query(
         f"SELECT COUNT(*) as cnt FROM {table_name}", conn
@@ -255,7 +285,18 @@ def get_table_info(table_name, conn):
 def execute_query(sql, conn, params=None):
     """
     Execute a SQL query and return results as a DataFrame.
+
     A safe wrapper around pd.read_sql_query with error handling.
+    Returns an empty DataFrame on failure rather than raising an exception.
+
+    Args:
+        sql (str): SQL query to execute.
+        conn (sqlite3.Connection): Active database connection.
+        params (list or tuple, optional): Query parameters for
+            parameterized queries. Defaults to None.
+
+    Returns:
+        pd.DataFrame: Query results, or empty DataFrame if query fails.
     """
     try:
         if params:
@@ -268,7 +309,16 @@ def execute_query(sql, conn, params=None):
 
 
 def list_tables(conn):
-    """List all tables in the database with row counts."""
+    """
+    List all tables in the database with their row counts.
+
+    Args:
+        conn (sqlite3.Connection): Active database connection.
+
+    Returns:
+        pd.DataFrame: DataFrame with columns 'table' and 'rows',
+            sorted alphabetically by table name.
+    """
     tables = pd.read_sql_query(
         "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name", conn
     )
@@ -324,9 +374,6 @@ def get_foreign_keys(conn):
 
 
 def generate_business_insight(result, client):
-    
-    
-
     """
     Generate structured business insights from a Text2SQL engine result.
     

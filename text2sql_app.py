@@ -1,12 +1,20 @@
 """
-text2sql_app.py — Streamlit UI for the Text-to-SQL Engine (Student Version)
+text2sql_app.py — TechCorp HR Analytics Streamlit Application
 =============================================================================
-A web interface that lets users ask questions in plain English, converts them
-to SQL, executes the query, and displays results with visualizations.
+A web interface that allows users to query an HR database using plain English.
+Converts natural language questions into SQL via AI, executes them safely
+against a SQLite database, and returns results with auto-generated
+visualizations and business insights.
+
+Features:
+    - Dual AI provider support: Anthropic Claude and Google Gemini
+    - Conversation memory for contextual follow-up questions
+    - SQL history sidebar with one-click re-run
+    - Custom SQL editor with safety validation
+    - CSV export for all query results
+    - Interactive ER diagram and schema explorer
 
 Run with:  streamlit run text2sql_app.py
-
-Students: Complete the TODO sections to build the full app.
 """
 
 import streamlit as st
@@ -16,11 +24,13 @@ import sqlite3
 import os
 import sys
 from datetime import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Make sure we can import from the current directory
 sys.path.insert(0, os.path.dirname(__file__))
 
-from db_utils import load_csv_to_db, get_schema_info, list_tables, get_table_schema
+from db_utils import load_csv_to_db, get_schema_info, list_tables, get_table_schema, generate_business_insight
 
 # Import from our completed text2sql_engine.py
 from text2sql_engine import (
@@ -66,6 +76,7 @@ if 'sql_history' not in st.session_state:
 
 if 'conversation_memory' not in st.session_state:
     st.session_state.conversation_memory = []
+    
 
 # ============================================================
 # SIDEBAR: Configuration & Schema Explorer
@@ -106,27 +117,26 @@ with st.sidebar:
 
     st.divider()
 
-    # TODO 18: Database Connection
-    # Create a cached function that loads all CSV files into a SQLite database
-    # and returns the connection. Then call it to get `conn`.
     @st.cache_resource
     def get_database_connection():
-        """Load CSV data into SQLite database (cached)."""
+        """
+        Load all CSV files from the data/ directory into an in-memory SQLite database.
+
+        Cached with st.cache_resource so the database is only loaded once per
+        session, not on every Streamlit rerun.
+
+        Returns:
+            sqlite3.Connection: Active connection to the in-memory HR database.
+        """
         csv_dir = os.path.join(os.path.dirname(__file__), 'data')
         return load_csv_to_db(csv_dir, db_path=':memory:')
-    
-    # Get the cached database connection
+
     conn = get_database_connection()
 
     st.header("📋 Database Schema")
     st.caption("Reference these tables when asking questions")
 
     with st.expander("📊 Table Details", expanded=True):
-        
-        # TODO 19: Schema Explorer
-        # Display each table with its row count and an expandable section
-        # showing column names and types.
-        
         tables_df = list_tables(conn)
         
         # Extract table names from the DataFrame
@@ -217,14 +227,14 @@ with st.sidebar:
         }
     """
     
-    # Display the diagram (renders beautifully like VS Code!)
+    # Display the diagram 
     stmd.st_mermaid(mermaid_diagram)
     
     st.caption("📊 Visual representation of table relationships")
 
     st.divider()
 
-    # TODO A: SQL History Sidebar
+    # SQL History Sidebar
     st.subheader("🕐 SQL History")
     if st.session_state.sql_history:
         for i, entry in enumerate(reversed(st.session_state.sql_history[-20:])):
@@ -241,12 +251,26 @@ with st.sidebar:
 # ============================================================
 
 
-# TODO C: Conversation Memory Helper
 def build_conversation_context(messages, max_exchanges=3):
     """
     Build a conversation history string from the last N Q&A pairs.
-    Passed into the prompt so the AI can handle follow-up questions.
+
+    Prepends recent question/SQL pairs to the current prompt so the AI
+    can handle follow-up questions like "show me just the top 3" without
+    losing context from previous queries. Limited to the last max_exchanges
+    to avoid exceeding token limits.
+
+    Args:
+        messages (list): The full st.session_state.messages list containing
+            all chat history dicts with role, content, question, and sql keys.
+        max_exchanges (int): Maximum number of past Q&A pairs to include.
+            Defaults to 3.
+
+    Returns:
+        str: Formatted context string ready to prepend to the current prompt,
+            or empty string if no prior exchanges exist.
     """
+    
     # Pull only assistant messages that have a question and SQL
     exchanges = [
         m for m in messages
@@ -264,8 +288,7 @@ def build_conversation_context(messages, max_exchanges=3):
     return "\n".join(context_lines)
 
 
-# TODO 21: Initialize the Text2SQL engine
-# When an API key is provided and no engine exists yet, create the engine.
+# Initialize the engine when an API key is provided
 if api_key and st.session_state.engine is None:
     try:
         # Initialize engine with the selected provider
@@ -284,14 +307,11 @@ if not api_key:
     st.stop()  # Stop execution until API key is provided
 
 
-# TODO B: Create tabs for Chat and Custom SQL
 tab1, tab2 = st.tabs(["💬 Chat", "🔧 Custom SQL"])
 
 with tab1:
 
-    # TODO 22: Display chat history
-    # Loop through stored messages and render each one with its role.
-    # Include any SQL, data, or visualization that was part of the response.
+    # Render all messages from chat history with their role and associated data
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
@@ -306,7 +326,7 @@ with tab1:
                 
                 # Show data table
                 if message["data"] is not None and not message["data"].empty:
-                    st.dataframe(message["data"], use_container_width=True)
+                    st.dataframe(message["data"], width='stretch')
                     if message.get("csv"):
                         st.download_button(
                             label="📥 Download Results as CSV",
@@ -319,9 +339,6 @@ with tab1:
                 # Show visualization if available
                 if "viz_code" in message and message["viz_code"]:
                     try:
-                        import matplotlib.pyplot as plt
-                        import seaborn as sns
-                        
                         # Provide the DataFrame to the viz code
                         df = message["data"]
                         
@@ -379,12 +396,11 @@ with tab1:
         # Generate response with the engine
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                # TODO C: Build conversation context for follow-up question support
+                # Build conversation context for follow-up question support
                 context = build_conversation_context(st.session_state.messages)
                 augmented_prompt = f"{context}{prompt}" if context else prompt
                 result = st.session_state.engine.ask(augmented_prompt, visualize=True, interpret=False)
             
-            # Display the response (copy from TODO 23)
             if result['success']:
                 st.write("Here's what I found:")
                 
@@ -394,7 +410,7 @@ with tab1:
                 
                 # Show data table
                 if result['data'] is not None and not result['data'].empty:
-                    st.dataframe(result['data'], use_container_width=True)
+                    st.dataframe(result['data'], width='stretch')
                     st.caption(f"📊 {len(result['data'])} rows returned")
                 else:
                     st.info("No data returned from query.")
@@ -402,8 +418,6 @@ with tab1:
                 # Show visualization
                 if result.get('viz_code'):
                     try:
-                        import matplotlib.pyplot as plt
-                        import seaborn as sns
                         df = result['data']
                         exec(result['viz_code'])
                         fig = plt.gcf()
@@ -416,7 +430,6 @@ with tab1:
                 if result['data'] is not None and not result['data'].empty:
                     if st.session_state.engine.provider != 'gemini':
                         with st.spinner("Generating business insights..."):
-                            from db_utils import generate_business_insight
                             insight_text = generate_business_insight(result, st.session_state.engine.client)
                             st.info(insight_text)
                             result['insight'] = insight_text
@@ -453,13 +466,7 @@ with tab1:
                 })
                 st.rerun()  # Force refresh to hide suggested questions
 
-    # TODO 23: Chat input and query processing
-    # Accept user input, send it through the engine pipeline, and display:
-    #   1. The generated SQL query
-    #   2. The query results as a table
-    #   3. An AI interpretation of the results
-    #   4. A visualization if available
-    # Save the full response to chat history.
+    # Accept user input and process it through the full engine pipeline
     if prompt := st.chat_input("Ask a question about your HR data..."):
         
         # Add user message to chat history
@@ -472,7 +479,7 @@ with tab1:
         # Generate response with the engine
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                # TODO C: Build conversation context for follow-up question support
+                # Build conversation context for follow-up question support
                 context = build_conversation_context(st.session_state.messages)
                 augmented_prompt = f"{context}{prompt}" if context else prompt
                 result = st.session_state.engine.ask(augmented_prompt, visualize=True, interpret=False)
@@ -487,7 +494,7 @@ with tab1:
                 
                 # Show data table
                 if result['data'] is not None and not result['data'].empty:
-                    st.dataframe(result['data'], use_container_width=True)
+                    st.dataframe(result['data'], width='stretch')
                     
                     # Show row count
                     st.caption(f"📊 {len(result['data'])} rows returned")
@@ -497,9 +504,6 @@ with tab1:
                 # Show visualization if available
                 if result.get('viz_code'):
                     try:
-                        import matplotlib.pyplot as plt
-                        import seaborn as sns
-                        
                         # Provide the DataFrame to the viz code
                         df = result['data']
                         
@@ -515,8 +519,6 @@ with tab1:
                 if result['data'] is not None and not result['data'].empty:
                     if st.session_state.engine.provider != 'gemini':
                         with st.spinner("Generating business insights..."):
-                            from db_utils import generate_business_insight
-                            
                             insight_text = generate_business_insight(result, st.session_state.engine.client)
                             st.info(insight_text)
                             
@@ -562,7 +564,7 @@ with tab1:
 
 
 # ============================================================
-# TODO B: Custom SQL Tab
+# Custom SQL Tab
 # ============================================================
 
 with tab2:
@@ -592,7 +594,7 @@ with tab2:
                 
                 if success and result is not None and not result.empty:
                     st.success(f"✅ Query returned {len(result)} rows")
-                    st.dataframe(result, use_container_width=True)
+                    st.dataframe(result, width='stretch')
                     
                     # CSV export for custom SQL results
                     csv = result.to_csv(index=False)
@@ -612,21 +614,3 @@ with tab2:
     st.caption("💡 Tip: Use the Database Schema in the sidebar to explore available tables and columns.")
 
 
-# ============================================================
-# OPTIONAL EXTENSIONS (for additional practice)
-# ============================================================
-
-# OPTIONAL TODO A: Add a "Show SQL History" sidebar section
-# Display previously executed queries in the sidebar.
-
-# OPTIONAL TODO B: Add a "Custom SQL" tab
-# Let users type and execute their own SQL queries with validation.
-
-# OPTIONAL TODO C: Add conversation memory
-# Include previous Q&A pairs in the prompt for contextual follow-up questions.
-
-# OPTIONAL TODO D: Add a data export button
-# Let users download query results as CSV.
-
-# OPTIONAL TODO E: Add a "Suggested Questions" section
-# Show clickable starter questions to help users get started.

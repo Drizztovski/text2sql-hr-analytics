@@ -1,14 +1,27 @@
 """
-text2sql_engine.py — Text-to-SQL Engine (Student Version with TODOs)
-=====================================================================
-Converts natural language questions into SQL queries using Google Gemini,
-then executes them safely against a SQLite database.
+text2sql_engine.py — Text-to-SQL Pipeline Engine
+=================================================
+Converts natural language questions into SQL queries using AI, executes
+them safely against a SQLite database, and returns results with optional
+auto-generated visualizations and business interpretations.
 
-Students will complete the TODO sections to build the full pipeline.
+Supports dual AI providers:
+    - Anthropic Claude (default, recommended for best SQL quality)
+    - Google Gemini (free tier available)
+
+Pipeline:
+    Question → Schema Context → AI SQL Generation → Safety Validation
+    → Execution → Visualization Code → Business Interpretation
 
 Usage:
     from text2sql_engine import Text2SQLEngine
-    engine = Text2SQLEngine(conn, api_key='YOUR_KEY')
+
+    # Claude (default)
+    engine = Text2SQLEngine(conn, api_key='YOUR_ANTHROPIC_KEY')
+
+    # Gemini (free tier)
+    engine = Text2SQLEngine(conn, api_key='YOUR_GEMINI_KEY', provider='gemini')
+
     result = engine.ask('What is the average salary by department?')
 """
 
@@ -56,8 +69,7 @@ def get_schema_for_prompt(conn):
     for table_name in tables['name']:
         cols = pd.read_sql_query(f"PRAGMA table_info({table_name})", conn)
 
-        # TODO 1: Build a CREATE TABLE statement for each table
-        # Include each column's name and type, marking primary keys.
+        # Build CREATE TABLE statement so the AI knows exact column names and types
         create_statement = f"CREATE TABLE {table_name} (\n"
         
         col_definitions = []
@@ -72,8 +84,7 @@ def get_schema_for_prompt(conn):
         schema_parts.append(create_statement)
         schema_parts.append("")  # Blank line for readability
 
-        # TODO 2: Add sample data so the AI can see actual values
-        # Query 2-3 rows from each table and append as a SQL comment.
+        # Include 3 sample rows so the AI can see actual data formats and values
         sample_data = pd.read_sql_query(f"SELECT * FROM {table_name} LIMIT 3", conn)
         
         if not sample_data.empty:
@@ -81,8 +92,7 @@ def get_schema_for_prompt(conn):
             schema_parts.append("-- " + sample_data.to_string(index=False).replace('\n', '\n-- '))
             schema_parts.append("")  # Blank line
 
-    # TODO 3: Add relationship hints at the end of the schema
-    # Tell the AI which columns link tables together so it writes correct JOINs.
+    # Append foreign key relationships so the AI writes correct JOINs
     schema_parts.append("=" * 60)
     schema_parts.append("FOREIGN KEY RELATIONSHIPS")
     schema_parts.append("=" * 60)
@@ -144,21 +154,21 @@ def validate_sql(sql):
 
     sql_upper = sql_clean.upper()
 
-    # TODO 4: Check that the query starts with SELECT or WITH
+    # Layer 1: Query must start with SELECT or WITH (blocks DROP, DELETE, etc. outright)
     if not (sql_upper.startswith('SELECT') or sql_upper.startswith('WITH')):
         return False, "Query must start with SELECT or WITH"
 
-    # TODO 5: Check for dangerous keywords using regex word boundaries
+    # Layer 2: Block dangerous keywords even if buried mid-query
+    # Word boundaries prevent false positives (e.g. "order_updates" won't match UPDATE)
     dangerous_keywords = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'TRUNCATE', 'CREATE', 'REPLACE']
     
     for keyword in dangerous_keywords:
-        # Use word boundaries \b to match whole words only
         if re.search(rf'\b{keyword}\b', sql_upper):
             return False, f"Dangerous keyword detected: {keyword}"
 
-    # TODO 6: Check for multiple statements (stacked query injection)
-    # Allow semicolon at the very end, but not in the middle
-    if ';' in sql_clean[:-1]:  # Check everywhere except last character
+    # Layer 3: Block stacked query injection (e.g. SELECT ...; DROP TABLE ...)
+    # Semicolons at the very end of a query are fine — only mid-query semicolons are dangerous
+    if ';' in sql_clean[:-1]:
         return False, "Multiple statements not allowed (semicolon detected)"
 
     return True, "Query is safe."
@@ -187,9 +197,7 @@ def extract_sql_from_response(response_text):
     str
         Extracted SQL query, cleaned up.
     """
-    # TODO 7: Try to extract SQL from markdown code blocks first
-    # Look for ```sql ... ``` or ``` ... ``` patterns
-    # Try ```sql ... ``` first
+    # Try ```sql ... ``` blocks first (most specific match)
     sql_block = re.search(r'```sql\s*\n?(.*?)\n?```', response_text, re.DOTALL | re.IGNORECASE)
     if sql_block:
         return sql_block.group(1).strip()
@@ -199,9 +207,7 @@ def extract_sql_from_response(response_text):
     if code_block:
         return code_block.group(1).strip()
 
-    # TODO 8: Try to find a SELECT or WITH statement in the text
-    # Handle both with and without a trailing semicolon
-    # Look for SELECT statement
+    # Fall back to finding a SELECT or WITH statement anywhere in the plain text
     select_match = re.search(r'(SELECT\b.*?)(?:;|\n\n|$)', response_text, re.DOTALL | re.IGNORECASE)
     if select_match:
         return select_match.group(1).strip()
@@ -221,30 +227,31 @@ def extract_sql_from_response(response_text):
 
 def generate_sql(question, client, schema_info, model='claude-sonnet-4-20250514', provider='claude'):
     """
-    Use Claude to convert a natural language question into a SQL query.
+    Convert a natural language question into a SQL query using AI.
+
+    Builds a detailed prompt with schema context and safety rules, then
+    calls the appropriate AI provider API to generate the SQL.
 
     Parameters
     ----------
     question : str
-        Natural language question about the data.
-    client : Anthropic
-        Configured Anthropic client.
+        Natural language question about the HR data.
+    client : Anthropic or google.genai.Client
+        Configured API client for the selected provider.
     schema_info : str
-        Database schema description (from get_schema_for_prompt).
+        Database schema description from get_schema_for_prompt().
     model : str
-        Claude model to use.
+        Model name to use (default: 'claude-sonnet-4-20250514').
+    provider : str
+        AI provider to use — 'claude' (default) or 'gemini'.
 
     Returns
     -------
     str
-        Generated SQL query.
+        Generated SQL query, or an error comment string if generation fails.
     """
-    # TODO 9: Build a detailed prompt that includes:
-    #   1. A role assignment for the AI
-    #   2. The full database schema
-    #   3. Clear rules (SELECT only, SQLite syntax, aliases, rounding, no explanations)
-    #   4. The user's question
-    prompt = prompt = f"""You are an expert SQL developer working with a SQLite database for TechCorp HR Analytics.
+    
+    prompt = f"""You are an expert SQL developer working with a SQLite database for TechCorp HR Analytics.
 
 🚨🚨🚨 MANDATORY CTE SYNTAX CHECK 🚨🚨🚨
 BEFORE writing ANY query with CTEs:
@@ -283,8 +290,6 @@ USER QUESTION:
 
 SQL QUERY:"""
 
-    # TODO 10: Call the Claude API and extract the SQL from the response
-    # Handle API errors gracefully with try/except
     try:
         if provider.lower() == 'gemini':
             # Gemini API call
@@ -332,17 +337,14 @@ def execute_generated_sql(sql, conn):
     tuple (bool, pd.DataFrame or str)
         (success, result_dataframe) or (False, error_message)
     """
-    # TODO 11: First validate the SQL using validate_sql()
-    # If not valid, return a tuple indicating failure with the reason
+    # Validate first — never execute SQL that hasn't passed the safety check
     is_safe, message = validate_sql(sql)
     
     if not is_safe:
         return False, f"SQL validation failed: {message}"
 
-    # TODO 12: Execute the validated query and return the results
-    # Handle execution errors gracefully
     try:
-        # Execute the query and get results as a DataFrame
+        # Execute the validated query and return results as a DataFrame
         result_df = pd.read_sql_query(sql, conn)
         return True, result_df
         
@@ -379,12 +381,7 @@ def generate_visualization_code(question, sql, df, client, model='claude-sonnet-
     str
         Python code string that creates a matplotlib figure.
     """
-    # TODO 13: Build a prompt that asks the AI to generate visualization code.
-    # Include the question, SQL, DataFrame preview, and rules for the code:
-    #   - Use matplotlib/seaborn, assume df is already defined
-    #   - Proper labels, title, tight_layout, appropriate chart type
-    #   - Store figure in variable called `fig`, do NOT call plt.show()
-    #   - Return ONLY the Python code
+    
     prompt = f"""You are a data visualization expert. Generate Python code to visualize query results.
 
 MULTI-CHART DETECTION RULES:
@@ -505,7 +502,6 @@ MANDATORY CODE ELEMENTS (Must appear in EVERY visualization):
 
 PYTHON CODE:"""
 
-    # TODO 14: Call the API and extract the Python code from the response.
     try:
         if provider.lower() == 'gemini':
             # Gemini API call
@@ -533,8 +529,22 @@ PYTHON CODE:"""
 
 
 def extract_python_from_response(response_text):
-    """Extract Python code from an AI response (similar to SQL extraction)."""
-    # TODO 15: Extract Python code from markdown code blocks
+    """
+    Extract Python code from an AI model's response.
+
+    Handles responses where code is wrapped in ```python ... ``` or
+``` ... ``` markdown blocks, or returned as plain text.
+
+    Parameters
+    ----------
+    response_text : str
+        Raw text response from the AI model.
+
+    Returns
+    -------
+    str
+        Extracted Python code, cleaned up and stripped of markdown.
+    """
     code_block = re.search(r'```(?:python)?\s*\n?(.*?)\n?```', response_text, re.DOTALL)
     if code_block:
         return code_block.group(1).strip()
@@ -550,14 +560,28 @@ class Text2SQLEngine:
     """
     Complete Text-to-SQL pipeline: Question → SQL → Results → Visualization.
 
+    Supports Anthropic Claude (default) and Google Gemini as AI providers.
+    Builds rich schema context on initialization so every query benefits
+    from full database awareness.
+
     Parameters
     ----------
     conn : sqlite3.Connection
-        Active database connection.
+        Active SQLite database connection.
     api_key : str
-        Anthropic Claude API key.
+        API key for the selected provider.
     model : str
-        Claude model name (default: 'claude-sonnet-4-20250514').
+        Model name to use. Defaults to 'claude-sonnet-4-20250514'.
+        For Gemini, use 'gemini-2.5-flash'.
+    provider : str
+        AI provider — 'claude' (default) or 'gemini'.
+
+    Attributes
+    ----------
+    schema_info : str
+        Full schema context string injected into every AI prompt.
+    history : list
+        Record of all questions asked in this session.
     """
 
     def __init__(self, conn, api_key, model='claude-sonnet-4-20250514', provider='claude'):
@@ -566,9 +590,7 @@ class Text2SQLEngine:
         self.provider = provider.lower()
         self.history = []
 
-        # TODO 16: Build the schema context and initialize the API client
-        # Store the schema, create the client, and test the connection.
-        # Build the schema context (uses TODOs 1-3)
+        # Build schema context — injected into every AI prompt for accurate SQL generation
         print("Building schema context...")
         self.schema_info = get_schema_for_prompt(conn)
         print(f"✓ Schema loaded: {len(self.schema_info)} characters")
@@ -576,7 +598,7 @@ class Text2SQLEngine:
         # Initialize the appropriate API client based on provider
         if self.provider == 'gemini':
             if not GEMINI_AVAILABLE:
-                raise ImportError("google-generativeai not installed. Run: pip install google-generativeai")
+                raise ImportError("google-genai not installed. Run: pip install google-genai")
             print("Initializing Gemini API...")
             self.client = genai.Client(api_key=api_key)
             print(f"✓ Gemini API configured with model: {model}")
@@ -629,8 +651,7 @@ class Text2SQLEngine:
             print("Error: Claude API not configured.")
             return result
 
-        # TODO 17: Implement the full ask() pipeline:
-        # 1. Generate SQL from the question
+        # Step 1: Generate SQL from the question
         print(f"\n🤔 Question: {question}")
         result['sql'] = generate_sql(question, self.client, self.schema_info, self.model, self.provider)
         
@@ -677,7 +698,23 @@ class Text2SQLEngine:
         return result
 
     def _interpret_results(self, question, data):
-        """Generate a business-friendly interpretation of query results."""
+        """
+        Generate a business-friendly interpretation of query results.
+
+        Parameters
+        ----------
+        question : str
+            The original natural language question asked by the user.
+        data : pd.DataFrame
+            The query result data to interpret.
+
+        Returns
+        -------
+        str
+            A 3-4 sentence business interpretation with one key insight
+            and one actionable recommendation, or an error message if
+            the API call fails.
+        """
         prompt = f"""You are a data analyst at a technology company. A user asked: "{question}"
 
 Here are the query results:
