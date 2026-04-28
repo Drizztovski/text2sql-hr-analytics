@@ -533,7 +533,7 @@ def extract_python_from_response(response_text):
     Extract Python code from an AI model's response.
 
     Handles responses where code is wrapped in ```python ... ``` or
-``` ... ``` markdown blocks, or returned as plain text.
+    ``` ... ``` markdown blocks, or returned as plain text.
 
     Parameters
     ----------

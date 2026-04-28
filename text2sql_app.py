@@ -54,8 +54,23 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.title("🏢 TechCorp HR Analytics")
-st.caption("Ask questions about your company data in plain English")
+st.markdown("""
+<div style="
+    background-color: #1E2A3A;
+    padding: 1.5rem 2rem;
+    border-radius: 10px;
+    border-left: 5px solid #4FC3F7;
+    margin-bottom: 1rem;
+">
+    <h1 style="color: #FAFAFA; margin: 0; font-size: 2rem;">🏢 TechCorp HR Analytics</h1>
+    <p style="color: #4FC3F7; margin: 0.4rem 0 0 0; font-size: 1rem;">
+        Natural Language Queries · Auto Visualizations · Business Insights
+    </p>
+    <p style="color: #8BA3B8; margin: 0.3rem 0 0 0; font-size: 0.85rem;">
+        Built by AJ Amatrudo · Data Analytics Bootcamp Portfolio Project
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ============================================================
@@ -109,7 +124,14 @@ with st.sidebar:
             model_name = "gemini-2.5-flash"
 
         if not api_key:
-            st.warning(f"Please enter your {api_provider.split()[0]} API key to get started.")
+            st.markdown(f"""
+            <div style="background-color:#1A2332; padding:0.7rem 1rem; border-radius:8px;
+                        border-left:3px solid #4FC3F7; margin-top:0.5rem;">
+                <p style="color:#B0C4D8; font-size:0.85rem; margin:0;">
+                    👈 Enter your {api_provider.split()[0]} API key above to get started.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
         
         # Engine initialization status (shown right here in config section!)
         if api_key and st.session_state.get('engine') is not None:
@@ -136,7 +158,7 @@ with st.sidebar:
     st.header("📋 Database Schema")
     st.caption("Reference these tables when asking questions")
 
-    with st.expander("📊 Table Details", expanded=True):
+    with st.expander("📊 Table Details", expanded=False):
         tables_df = list_tables(conn)
         
         # Extract table names from the DataFrame
@@ -303,8 +325,60 @@ if api_key and st.session_state.engine is None:
 
 # Show a helpful message if no API key is provided
 if not api_key:
-    st.info("👈 Please enter your API key in the sidebar to get started.")
-    st.stop()  # Stop execution until API key is provided
+    st.markdown("""
+    <div style="background-color:#1E2A3A; padding:1.5rem 2rem; border-radius:10px;
+                border-left:5px solid #4FC3F7; margin-bottom:1.5rem;">
+        <h3 style="color:#FAFAFA; margin:0 0 0.5rem 0;">👋 Welcome to TechCorp HR Analytics</h3>
+        <p style="color:#B0C4D8; margin:0; font-size:0.95rem;">
+            This tool uses <strong style="color:#4FC3F7;">Text-to-SQL AI</strong> —
+            ask questions about your HR data in plain English and get instant answers,
+            charts, and business insights. No SQL knowledge required.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("### ⚙️ Getting Started")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        <div style="background-color:#1A2332; padding:1rem; border-radius:8px; margin-bottom:1rem;">
+            <p style="color:#4FC3F7; font-weight:bold; margin:0 0 0.3rem 0;">🤖 Claude (Anthropic)</p>
+            <p style="color:#B0C4D8; font-size:0.88rem; margin:0;">
+                Best answer quality and business insights. Requires a paid API key
+                from <strong>console.anthropic.com</strong>.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div style="background-color:#1A2332; padding:1rem; border-radius:8px; margin-bottom:1rem;">
+            <p style="color:#4FC3F7; font-weight:bold; margin:0 0 0.3rem 0;">✨ Gemini (Google)</p>
+            <p style="color:#B0C4D8; font-size:0.88rem; margin:0;">
+                Free tier available — great for getting started.
+                Get a key at <strong>aistudio.google.com/apikey</strong>.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("### 💡 Sample Questions You Can Ask")
+    sample_cols = st.columns(3)
+    samples = [
+        "How many employees are in each department?",
+        "What is the average salary by department?",
+        "Who are the top 5 highest paid employees?",
+    ]
+    for i, q in enumerate(samples):
+        with sample_cols[i]:
+            st.markdown(f"""
+            <div style="background-color:#1A2332; padding:0.7rem 1rem; border-radius:8px;
+                        border:1px solid #2A3A4A;">
+                <p style="color:#B0C4D8; font-size:0.88rem; margin:0;">💬 {q}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    st.stop() 
 
 
 tab1, tab2 = st.tabs(["💬 Chat", "🔧 Custom SQL"])
